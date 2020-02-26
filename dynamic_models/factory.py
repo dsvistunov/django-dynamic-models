@@ -5,7 +5,6 @@ from . import utils
 from .exceptions import OutdatedModelError
 
 
-
 class ModelFactory:
 
     def __init__(self, model_schema):
@@ -70,6 +69,7 @@ class ModelFactory:
             app_label = self.schema.app_label
             db_table = self.schema.db_table
             verbose_name = self.schema.name
+
         return Meta
 
 
@@ -81,6 +81,7 @@ class FieldFactory:
         'float': models.FloatField,
         'boolean': models.BooleanField,
         'date': models.DateTimeField,
+        'foreign_key': models.ForeignKey
     }
 
     def __init__(self, field_schema):
@@ -99,7 +100,6 @@ class FieldFactory:
         return [(dt, dt) for dt in cls.DATA_TYPES]
 
 
-
 def check_model_schema(sender, instance, **kwargs): # pylint: disable=unused-argument
     """Check that the schema being used is the most up-to-date.
 
@@ -111,6 +111,7 @@ def check_model_schema(sender, instance, **kwargs): # pylint: disable=unused-arg
             "model {} has changed".format(sender.__name__)
         )
 
+
 def _connect_schema_checker(model):
     models.signals.pre_save.connect(
         check_model_schema,
@@ -118,12 +119,14 @@ def _connect_schema_checker(model):
         dispatch_uid=_get_signal_uid(model.__name__)
     )
 
+
 def _disconnect_schema_checker(model):
     models.signals.pre_save.disconnect(
         check_model_schema,
         sender=model,
         dispatch_uid=_get_signal_uid(model.__name__)
     )
+
 
 def _get_signal_uid(model_name):
     return '{}_model_schema'.format(model_name)
