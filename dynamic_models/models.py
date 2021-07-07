@@ -21,7 +21,6 @@ from . import exceptions
 from .schema import ModelSchemaEditor, FieldSchemaEditor
 from .factory import ModelFactory, FieldFactory
 
-
 LAST_MODIFIED_CACHE = utils.LastModifiedCache()
 
 
@@ -55,7 +54,7 @@ class ModelSchemaBase(models.base.ModelBase):
         return model
 
 
-def drop_model_table(sender, instance, **kwargs): # pylint: disable=unused-argument
+def drop_model_table(sender, instance, **kwargs):  # pylint: disable=unused-argument
     instance.destroy_model()
 
 
@@ -157,6 +156,21 @@ class AbstractModelSchema(LastModifiedBase, metaclass=ModelSchemaBase):
         del self.last_modified
 
 
+class ForeignKeyModelSchema(AbstractModelSchema):
+
+    def get_fields(self):
+        return ModelForeignKeyFieldSchema.objects.for_model(self)
+
+    def add_field(self, field_schema, **options):
+        if 'to' not in options or 'on_delete' in options:
+            raise exceptions.DynamicModelError("Missing required args: 'to' or 'on_delete'")
+        return ModelForeignKeyFieldSchema.objects.create(
+            model_schema=self,
+            field_schema=field_schema,
+            **options
+        )
+
+
 class AbstractFieldSchema(models.Model):
     PROHIBITED_NAMES = ('__module__', '_schema', '_declared')
     MAX_LENGTH_DATA_TYPES = ('character',)
@@ -248,7 +262,6 @@ class GenericField(models.Model):
 
 
 class ModelFieldSchema(GenericModel, GenericField):
-
     objects = ModelFieldSchemaManager()
 
     null = models.BooleanField(default=False)
@@ -257,10 +270,10 @@ class ModelFieldSchema(GenericModel, GenericField):
 
     class Meta:
         unique_together = (
-            'model_content_type', 'model_id', 'field_content_type', 'field_id'
-        ),
+                              'model_content_type', 'model_id', 'field_content_type', 'field_id'
+                          ),
 
-    def  __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._initial_null = self.null
         self.initial_field = self.get_latest_model_field()
@@ -330,7 +343,35 @@ class ModelFieldSchema(GenericModel, GenericField):
             self.save()
 
 
+class ModelForeignKeyFieldSchema(ModelFieldSchema):
+
+    CASCADE = 'cascade'
+    PROTECT = 'protect'
+    SET_NULL = 'set_null'
+
+    ON_DELETE_CHOICES = (
+        (CASCADE, 'CASCADE'),
+        (PROTECT, 'PROTECT'),
+        (SET_NULL, 'SET_NULL'),
+    )
+
+    ON_DELETE_MAPPER = {
+        'cascade': models.CASCADE,
+        'protect': models.PROTECT,
+        'set_null': models.SET_NULL,
+    }
+
+    to = models.CharField(max_length=100)
+    on_delete = models.CharField(max_length=100, choices=ON_DELETE_CHOICES)
+
+    def get_options(self):
+        return {
+            'to': self.to,
+            'on_delete': self.ON_DELETE_MAPPER[self.on_delete],
+        }
+
+
 @receiver(models.signals.pre_delete, sender=ModelFieldSchema)
-def drop_table_column(sender, instance, **kwargs): # pylint: disable=unused-argument
+def drop_table_column(sender, instance, **kwargs):  # pylint: disable=unused-argument
     instance.drop_column()
     instance.update_last_modified()
